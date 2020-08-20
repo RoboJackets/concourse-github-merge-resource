@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+
+"""
+Does nothing
+"""
+
+from json import dumps, loads
+from sys import argv, stdin
+
+assert len(argv) == 2
+
+concourse_input = loads(stdin.read())
+
+assert isinstance(concourse_input, dict)
+assert isinstance(concourse_input["version"], dict)
+assert isinstance(concourse_input["version"]["status"], str)
+
+status = concourse_input["version"]["status"]
+
+print(dumps({"version": {"status": status,}}))  # noqa: E231

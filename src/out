@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+
+"""
+Calls the GitHub API to approve a pull request
+"""
+import logging
+import sys
+from json import dumps, loads
+from os import listdir, path
+from subprocess import run
+from sys import argv, stderr, stdin
+
+from requests import get, put
+
+required_source_fields = ("pull_request", "token")
+optional_source_fields = ("debug",)
+
+assert len(argv) == 2
+
+input_directory = argv[1]
+
+assert path.exists(input_directory)
+assert path.isdir(input_directory)
+
+concourse_input = loads(stdin.read())
+
+assert isinstance(concourse_input, dict)
+assert "source" in concourse_input, "Missing required `source` fields"
+assert isinstance(concourse_input["source"], dict), "`source` must be a dict, check pipeline configuration"
+
+for source_field in required_source_fields:
+    assert source_field in concourse_input["source"], f"Missing required field `{source_field}`in `source`"
+
+for source_field in concourse_input["source"]:
+    assert (
+        source_field in required_source_fields or source_field in optional_source_fields
+    ), f"Unexpected field `{source_field}` passed in `source`"
+
+if "debug" in concourse_input["source"]:
+    if not concourse_input["source"]["debug"] is True:
+        print("Debug flag set to invalid value, check documentation")
+        sys.exit(1)
+
+    handler = logging.StreamHandler(stderr)
+    handler.setLevel(logging.DEBUG)
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+
+    logger.debug("Debug logging enabled")
+
+repository = path.join(input_directory, concourse_input["source"]["pull_request"])
+
+assert path.exists(repository)
+assert path.isdir(repository)
+
+if len(listdir(input_directory)) > 1:
+    print(
+        "To improve performance, you may want to manually configure the inputs to this step.", file=stderr,
+    )
+
+git_rev_parse_output = run(["git", "-C", repository, "rev-parse", "HEAD"], text=True, capture_output=True, check=True)
+
+with open(path.join(repository, ".git", "resource", "url"), "r") as url_file:
+    pull_request_url_from_file = url_file.read().split("/")
+
+host = pull_request_url_from_file[2]
+api_base_url = "https://" + ("api.github.com" if host == "github.com" else host + "/api/v3")
+owner = pull_request_url_from_file[3]
+repo = pull_request_url_from_file[4]
+commit_id = git_rev_parse_output.stdout.strip()
+pull_number = pull_request_url_from_file[6]
+
+headers = {
+    "Authorization": "Bearer " + concourse_input["source"]["token"],
+    "User-Agent": "concourse-github-check-resource",
+    "Accept": "application/vnd.github.v3+json",
+}
+
+data = {
+    "commit_id": commit_id,
+    "event": "APPROVE",
+}
+
+response = get(f"{api_base_url}/repos/{owner}/{repo}/pulls/{pull_number}", headers=headers)
+assert (
+    response.status_code == 200
+), f"Got unexpected response code {response.status_code} from GitHub: {response.json()}"
+
+json = response.json()
+
+url = json["url"]
+html_url = json["html_url"]
+
+if response.json()["user"]["type"].lower() != "bot":
+    print(
+        dumps(
+            {
+                "version": {"status": "skipped"},
+                "metadata": [{"name": "url", "value": url}, {"name": "html_url", "value": html_url},],  # noqa: E231
+            }
+        )
+    )
+    sys.exit(0)
+
+if response.json()["mergeable"] is not True:
+    print(
+        dumps(
+            {
+                "version": {"status": "skipped"},
+                "metadata": [{"name": "url", "value": url}, {"name": "html_url", "value": html_url},],  # noqa: E231
+            }
+        )
+    )
+    sys.exit(0)
+
+response = put(f"{api_base_url}/repos/{owner}/{repo}/pulls/{pull_number}/merge", json=data, headers=headers)
+assert (
+    response.status_code == 200
+), f"Got unexpected response code {response.status_code} from GitHub: {response.json()}"
+
+print(
+    dumps(
+        {
+            "version": {"status": "merged"},
+            "metadata": [{"name": "url", "value": url}, {"name": "html_url", "value": html_url},],  # noqa: E231
+        }
+    )
+)
