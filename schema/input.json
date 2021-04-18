@@ -1,0 +1,36 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "source": {
+            "type": "object",
+            "properties": {
+                "pull_request_url": {
+                    "type": "string",
+                    "format": "uri"
+                },
+                "commit": {
+                    "type": "string",
+                    "regex": "[a-z0-9]{40}"
+                },
+                "token": {
+                    "type": "string",
+                    "regex": "ghs_[a-zA-Z0-9]{36}"
+                },
+                "debug": {
+                    "const": true
+                }
+            },
+            "additionalProperties": false,
+            "required": [
+                "pull_request_url",
+                "commit",
+                "token"
+            ]
+        }
+    },
+    "additionalProperties": false,
+    "required": [
+        "source"
+    ]
+}

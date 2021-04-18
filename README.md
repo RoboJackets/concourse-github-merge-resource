@@ -5,11 +5,10 @@ Concourse resource to automatically merge a pull request if it was opened by a b
 
 ## Source configuration
 
-- `pull_request` (required) - the resource where pull requests are provided
+- `pull_request_url` (required) - pull request that is being built
+- `commit` (required) - commit that is being built
 - `token` (required) - GitHub App token to use to authenticate
 - `debug` (optional) - whether to enable debug logging; must be set to boolean true if present
-
-GitHub endpoint information and the commit SHA will be derived from the environment.
 
 ## Behavior
 Do not `get` this resource manually, it will not work.
@@ -23,4 +22,4 @@ Does nothing.
 ### `out`
 Merges the pull request if the author is a bot and it is in a mergeable state, otherwise does nothing.
 
-You may want to [manually configure inputs](https://concourse-ci.org/jobs.html#schema.step.put-step.inputs) for better performance if you have large resources in your pipeline.
+`inputs` must be an empty list; this reduces overhead starting the container.
